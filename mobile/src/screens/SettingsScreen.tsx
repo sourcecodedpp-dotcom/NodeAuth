@@ -114,7 +114,7 @@ export function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: '#ffffff' },
   scroll: { padding: 20, paddingBottom: 100 }, // space for Dock
   
   // Main Card
