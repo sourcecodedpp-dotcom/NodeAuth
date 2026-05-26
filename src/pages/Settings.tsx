@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { MobileContainer } from "../components/MobileContainer";
 import { TopBar } from "../components/TopBar";
 import { useAppStore } from "../store";
-import { getPendingLogs, markLogsSynced } from "../lib/db";
+import { getPendingLogs, performMasterSync } from "../lib/db";
 import { CloudOff, CloudUpload, ArrowLeft, LogOut } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -26,14 +26,13 @@ export function Settings() {
     
     await new Promise(resolve => setTimeout(resolve, 800));
     
-    setSyncMessage("Uploading encrypted logs...");
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const logsToSync = await getPendingLogs();
-    const ids = logsToSync.map(l => l.id);
-    await markLogsSynced(ids);
-    
-    setSyncMessage("Sync complete. Cache flushed.");
+    try {
+      const syncedCount = await performMasterSync();
+      setSyncMessage(`Sync complete. ${syncedCount} logs securely purged.`);
+    } catch (err) {
+      console.error(err);
+      setSyncMessage("Sync failed. Logs retained safely offline.");
+    }
     
     await refreshPendingLogs();
     

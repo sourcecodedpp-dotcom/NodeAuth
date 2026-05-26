@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Webcam from "react-webcam";
 import { MobileContainer } from "../components/MobileContainer";
 import { TopBar } from "../components/TopBar";
 import { generateRandomChallenge, verifyLivenessChallenge, computeSimilarity } from "../lib/vision";
-import { getAllUsers, logAuthEvent } from "../lib/db";
+import { getAllUsers, logAuthEvent, getEmbedding } from "../lib/db";
 import { useAppStore } from "../store";
 import { motion } from "motion/react";
 import { ShieldCheck, ShieldAlert } from "lucide-react";
@@ -18,6 +18,9 @@ export function Liveness() {
   
   const [challenge, setChallenge] = useState(() => generateRandomChallenge());
   const [status, setStatus] = useState("idle"); // idle, checking, success, fail
+  const [matchedName, setMatchedName] = useState<string | null>(null);
+  const webcamRef = useRef<Webcam>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   
   useEffect(() => {
     if (!embedding) {
@@ -30,7 +33,70 @@ export function Liveness() {
     async function runChallenge() {
       setStatus("checking");
       
-      const { passed, error } = await verifyLivenessChallenge(challenge.id, true);
+      // Wait for video element to be ready
+      while (!webcamRef.current?.video || webcamRef.current.video.readyState !== 4) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (isCancelled) return;
+      }
+      
+      const { passed, error } = await verifyLivenessChallenge(
+        challenge.id, 
+        webcamRef.current.video,
+        (pts, dims) => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          // Ensure canvas matches video resolution to perfectly overlay with object-cover
+          if (canvas.width !== dims.width) canvas.width = dims.width;
+          if (canvas.height !== dims.height) canvas.height = dims.height;
+          
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // Advanced Sci-Fi HUD Rendering
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          // Helper to draw a path through indices
+          const drawPath = (start: number, end: number, close = false) => {
+            ctx.beginPath();
+            ctx.moveTo(pts[start].x, pts[start].y);
+            for (let i = start + 1; i <= end; i++) {
+              ctx.lineTo(pts[i].x, pts[i].y);
+            }
+            if (close) ctx.closePath();
+            ctx.stroke();
+          };
+
+          // 1. Draw glowing wireframe mesh
+          ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+          ctx.lineWidth = 1.5;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = 'rgba(0, 255, 255, 0.8)';
+          
+          drawPath(0, 16);    // Jawline
+          drawPath(17, 21);   // Right Eyebrow
+          drawPath(22, 26);   // Left Eyebrow
+          drawPath(27, 30);   // Nose bridge
+          drawPath(31, 35);   // Lower nose
+          drawPath(36, 41, true); // Right Eye
+          drawPath(42, 47, true); // Left Eye
+          drawPath(48, 59, true); // Outer Lip
+          drawPath(60, 67, true); // Inner Lip
+
+          // 2. Draw defined nodes
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowBlur = 4;
+          ctx.shadowColor = '#00ffff';
+          
+          for (let i = 0; i < pts.length; i++) {
+            const pt = pts[i];
+            ctx.beginPath();
+            // Create a small technical crosshair or dot for each point
+            ctx.fillRect(pt.x - 1, pt.y - 1, 2, 2);
+          }
+        }
+      );
       
       if (isCancelled) return;
 
@@ -47,19 +113,23 @@ export function Liveness() {
 
       const users = await getAllUsers();
       let matchedUserId = null;
+      let matchedUserName = null;
       let highestScore = 0;
 
       for (const u of users) {
-        const storedVector = new Float32Array(128).fill(0.1); 
+        const dbEntry = await getEmbedding(u.embeddingId);
+        const storedVector = dbEntry ? dbEntry.vector : new Float32Array(128).fill(0.1); 
         const score = computeSimilarity(embedding!, storedVector);
-        if (score > 0.8 && score > highestScore) {
+        if (score > 0.55 && score > highestScore) {
           highestScore = score;
           matchedUserId = u.id;
+          matchedUserName = u.name;
         }
       }
 
       if (matchedUserId) {
         setStatus("success");
+        setMatchedName(matchedUserName);
         // Vibrate to confirm face match success
         if ('vibrate' in navigator) navigator.vibrate([100, 50, 100]);
         await handleResult(matchedUserId, "success", highestScore);
@@ -105,10 +175,16 @@ export function Liveness() {
         </div>
 
         <Webcam 
+          ref={webcamRef}
           audio={false}
           videoConstraints={{ facingMode }}
           className="absolute inset-0 w-full h-full object-cover"
           mirrored={facingMode === "user"}
+        />
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10"
+          style={{ transform: facingMode === "user" ? "scaleX(-1)" : "none" }}
         />
         
         <div className="absolute inset-0 flex flex-col items-center justify-end pb-12 p-6 z-10">
@@ -147,6 +223,9 @@ export function Liveness() {
                   <ShieldCheck className="w-10 h-10 text-white relative z-10" strokeWidth={1.5} />
                 </div>
                 <h2 className="text-2xl font-semibold text-black mb-2 tracking-tight">Verified</h2>
+                {matchedName && (
+                  <p className="text-neutral-500 font-medium mb-1">{matchedName}</p>
+                )}
                 <div className="bg-black/5 py-1.5 px-3 rounded-md text-[10px] uppercase tracking-[0.15em] font-bold text-black mt-2">
                   Access Granted
                 </div>

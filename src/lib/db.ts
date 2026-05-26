@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { User, AuthLog } from '../types';
+import { pushLogsToCloud } from './firebase';
 
 interface FaceGuardDB extends DBSchema {
   users: {
@@ -60,6 +61,11 @@ export async function getUser(id: string) {
   return db.get('users', id);
 }
 
+export async function getEmbedding(id: string) {
+  const db = await initDB();
+  return db.get('embeddings', id);
+}
+
 // Logging Operations
 export async function logAuthEvent(log: AuthLog) {
   const db = await initDB();
@@ -74,17 +80,28 @@ export async function getPendingLogs() {
   return logs.map((l: any) => ({ ...l, synced: false })) as AuthLog[];
 }
 
-export async function markLogsSynced(logIds: string[]) {
+export async function purgeLogs(logIds: string[]) {
   const db = await initDB();
   const tx = db.transaction('auth_logs', 'readwrite');
   for (const id of logIds) {
-    const log = await tx.store.get(id);
-    if (log) {
-      log.synced = 1 as any;
-      await tx.store.put(log);
-    }
+    await tx.store.delete(id);
   }
   await tx.done;
+}
+
+export async function performMasterSync() {
+  const pendingLogs = await getPendingLogs();
+  if (pendingLogs.length === 0) return 0; // Nothing to sync
+
+  const success = await pushLogsToCloud(pendingLogs);
+  if (success) {
+    // If successfully pushed to cloud backend (or simulated), PURGE local logs
+    const logIds = pendingLogs.map(l => l.id);
+    await purgeLogs(logIds);
+    return logIds.length;
+  } else {
+    throw new Error("Failed to sync to cloud backend");
+  }
 }
 
 // Seeding standard Demo User
