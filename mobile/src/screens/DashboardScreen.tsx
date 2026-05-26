@@ -66,7 +66,12 @@ export function DashboardScreen() {
           <AnimatedTouchableOpacity
             entering={FadeInUp.delay(100)}
             style={styles.primaryCard}
-            onPress={() => navigation.navigate('FaceScan')}
+            onPress={() => {
+              if (typeof document !== 'undefined' && document.activeElement) {
+                (document.activeElement as HTMLElement).blur();
+              }
+              navigation.navigate('FaceScan');
+            }}
             activeOpacity={0.85}
           >
             <View style={{ flex: 1 }}>

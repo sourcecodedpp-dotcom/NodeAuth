@@ -72,6 +72,9 @@ export function FaceScanScreen() {
       const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.6 });
       const base64 = `data:image/jpeg;base64,${photo?.base64}`;
       const embedding = await extractFaceEmbedding(base64);
+      if (typeof document !== 'undefined' && document.activeElement) {
+        (document.activeElement as HTMLElement).blur();
+      }
       navigation.navigate('Liveness', {
         embedding: Array.from(embedding),
         capturedAt: Date.now()
