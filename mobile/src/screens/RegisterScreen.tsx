@@ -1,204 +1,279 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  Alert, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform,
+  Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions, CameraType } from 'expo-camera';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { extractFaceEmbedding, loadModels } from '../lib/vision';
 import { saveUser } from '../lib/db';
 import { TopBar } from '../components/TopBar';
+import { Dock } from '../components/Dock';
+import Animated, { FadeIn, FadeOut, Easing, useSharedValue, withRepeat, withTiming, useAnimatedStyle } from 'react-native-reanimated';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Register'>;
+
+const { width, height } = Dimensions.get('window');
 
 export function RegisterScreen() {
   const navigation = useNavigation<Nav>();
   const [permission, requestPermission] = useCameraPermissions();
   const [name, setName] = useState('');
-  const [role, setRole] = useState<'field_personnel' | 'admin'>('field_personnel');
-  const [step, setStep] = useState<'form' | 'camera' | 'saving'>('form');
-  const [saved, setSaved] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [status, setStatus] = useState('Position face in the frame');
+  const [facingMode, setFacingMode] = useState<CameraType>('front');
+  const [isSuccess, setIsSuccess] = useState(false);
   const cameraRef = useRef<CameraView>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadModels();
   }, []);
 
-  async function startCapture() {
+  const toggleCamera = useCallback(() => {
+    setFacingMode(prev => prev === 'front' ? 'back' : 'front');
+  }, []);
+
+  const handleRegister = useCallback(async () => {
     if (!name.trim()) {
-      Alert.alert('Name Required', 'Please enter the personnel name.');
+      setStatus('Please enter a name first.');
       return;
     }
+    
     if (!permission?.granted) {
       const res = await requestPermission();
       if (!res.granted) return;
     }
-    setStep('camera');
-  }
 
-  async function captureAndSave() {
     if (!cameraRef.current) return;
-    setStep('saving');
+
+    setIsProcessing(true);
+    setStatus('Loading System...');
+
     try {
+      setStatus('Extracting Features...');
       const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.6 });
       const base64 = `data:image/jpeg;base64,${photo?.base64}`;
       const embedding = await extractFaceEmbedding(base64);
 
-      const userId = `USER-${Date.now()}`;
+      const userId = `EMP-${Math.floor(Math.random() * 90000) + 10000}`;
+      
       await saveUser({
         id: userId,
         name: name.trim(),
-        role,
+        role: 'field_personnel',
         embeddingId: `emb-${userId}`,
         createdAt: Date.now(),
       }, embedding);
 
-      setSaved(true);
+      setStatus('Registration Complete');
+      setIsSuccess(true);
+      
+      setTimeout(() => {
+        navigation.navigate('Dashboard');
+      }, 1500);
+
     } catch (err: any) {
-      Alert.alert('Enrollment Failed', err.message || 'Could not process face. Please try again.');
-      setStep('camera');
+      console.error(err);
+      setStatus('Registration error.');
+      setIsProcessing(false);
     }
-  }
-
-  if (saved) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.successBox}>
-          <Text style={styles.successIcon}>✓</Text>
-          <Text style={styles.successTitle}>Enrolled!</Text>
-          <Text style={styles.successSub}>{name} has been successfully registered.</Text>
-          <TouchableOpacity style={styles.doneBtn} onPress={() => navigation.navigate('Dashboard')}>
-            <Text style={styles.doneBtnText}>Back to Dashboard</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.anotherBtn} onPress={() => { setName(''); setStep('form'); setSaved(false); }}>
-            <Text style={styles.anotherText}>Enroll Another</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (step === 'camera' || step === 'saving') {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: '#000' }]}>
-        <CameraView ref={cameraRef} style={styles.camera} facing="front">
-          <View style={styles.camOverlay}>
-            <View style={styles.ovalFrame} />
-            <Text style={styles.camLabel}>Center face in oval</Text>
-            <Text style={styles.camName}>{name}</Text>
-          </View>
-        </CameraView>
-        <View style={styles.camControls}>
-          <TouchableOpacity
-            style={[styles.captureBtn, step === 'saving' && { opacity: 0.5 }]}
-            onPress={captureAndSave}
-            disabled={step === 'saving'}
-          >
-            {step === 'saving'
-              ? <ActivityIndicator color="#000" />
-              : <Text style={styles.captureBtnText}>Capture & Enroll</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setStep('form')}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  }, [name, permission, navigation]);
 
   return (
     <SafeAreaView style={styles.container}>
-      <TopBar title="Enroll Personnel" showBack />
+      <TopBar title="Register Personnel" />
+      
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.scroll}>
-          <View style={styles.card}>
-            <Text style={styles.label}>FULL NAME</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Rajesh Kumar"
-              placeholderTextColor="#aaa"
-              autoFocus
-            />
+        <View style={styles.content}>
+          
+          {/* Top Half: Camera */}
+          <View style={styles.cameraContainer}>
+            {permission?.granted ? (
+              <CameraView ref={cameraRef} style={styles.camera} facing={facingMode} />
+            ) : (
+              <View style={styles.cameraPlaceholder} />
+            )}
+            
+            {/* Camera Overlay */}
+            <View style={styles.cameraOverlay}>
+              {/* Toggle Camera Button */}
+              <TouchableOpacity style={styles.toggleBtn} onPress={toggleCamera}>
+                <Text style={styles.toggleBtnText}>Flip</Text>
+              </TouchableOpacity>
 
-            <Text style={styles.label}>ROLE</Text>
-            <View style={styles.roleRow}>
-              {(['field_personnel', 'admin'] as const).map(r => (
-                <TouchableOpacity
-                  key={r}
-                  style={[styles.roleBtn, role === r && styles.roleBtnActive]}
-                  onPress={() => setRole(r)}
-                >
-                  <Text style={[styles.roleBtnText, role === r && styles.roleBtnTextActive]}>
-                    {r === 'field_personnel' ? '👷 Field Personnel' : '🔑 Admin'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {/* Dashed Circle */}
+              <View style={styles.dashedCircle} />
+
+              {/* Scanner Line Animation */}
+              {isProcessing && !isSuccess && (
+                <View style={styles.scannerLineWrapper}>
+                  <ScannerLine />
+                </View>
+              )}
+
+              {/* Success Checkmark */}
+              {isSuccess && (
+                <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.successCircle}>
+                  <Text style={styles.successCheck}>✓</Text>
+                </Animated.View>
+              )}
+
+              {/* Status Pill */}
+              <View style={[styles.statusPill, isSuccess && styles.statusPillSuccess]}>
+                <Text style={[styles.statusText, isSuccess && styles.statusTextSuccess]}>{status}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Bottom Half: Form */}
+          <View style={styles.formContainer}>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder="Full Name"
+                placeholderTextColor="#999"
+                editable={!isProcessing}
+              />
+              <Text style={styles.inputHint}>
+                Ensure the personnel's face is clearly visible without sunglasses or hats.
+              </Text>
             </View>
 
-            <TouchableOpacity style={styles.enrollBtn} onPress={startCapture}>
-              <Text style={styles.enrollBtnText}>📷  Proceed to Face Capture</Text>
+            <TouchableOpacity 
+              style={[styles.enrollBtn, (isProcessing || !name.trim()) && styles.enrollBtnDisabled]}
+              onPress={handleRegister}
+              disabled={isProcessing || !name.trim()}
+            >
+              {isProcessing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.enrollBtnText}>Enroll Personnel</Text>
+              )}
             </TouchableOpacity>
           </View>
-        </ScrollView>
+          
+        </View>
       </KeyboardAvoidingView>
+
+      <Dock />
     </SafeAreaView>
   );
 }
 
+// Scanner Line Animation Component
+function ScannerLine() {
+  const translateY = useSharedValue(0);
+
+  useEffect(() => {
+    translateY.value = withRepeat(
+      withTiming(height * 0.4, { duration: 2500, easing: Easing.linear }),
+      -1,
+      false
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }]
+  }));
+
+  return (
+    <Animated.View style={[styles.scannerLine, animatedStyle]} />
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  scroll: { padding: 20, paddingBottom: 40 },
-  card: {
-    backgroundColor: '#fff', borderRadius: 28, padding: 24,
-    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 20, elevation: 4,
+  container: { flex: 1, backgroundColor: '#fff' },
+  content: { flex: 1, paddingBottom: 80 }, // Leave room for dock
+  
+  // Camera Section
+  cameraContainer: {
+    height: height * 0.45,
+    width: '100%',
+    backgroundColor: '#f5f5f5',
+    position: 'relative',
+    overflow: 'hidden',
   },
-  label: { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: '#999', marginBottom: 8, marginTop: 16 },
-  input: {
-    borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.1)', borderRadius: 14,
-    padding: 14, fontSize: 16, color: '#000',
-  },
-  roleRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
-  roleBtn: {
-    flex: 1, padding: 14, borderRadius: 14,
-    borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.1)',
-    alignItems: 'center',
-  },
-  roleBtnActive: { backgroundColor: '#000', borderColor: '#000' },
-  roleBtnText: { fontSize: 12, fontWeight: '600', color: '#666' },
-  roleBtnTextActive: { color: '#fff' },
-  enrollBtn: {
-    backgroundColor: '#000', borderRadius: 20, paddingVertical: 16,
-    alignItems: 'center', marginTop: 20,
-  },
-  enrollBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  // Camera
   camera: { flex: 1 },
-  camOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  ovalFrame: {
-    width: 220, height: 280, borderRadius: 120,
-    borderWidth: 2.5, borderColor: '#00ffcc',
-    shadowColor: '#00ffcc', shadowOpacity: 0.6, shadowRadius: 20, marginBottom: 20,
+  cameraPlaceholder: { flex: 1, backgroundColor: '#e5e5e5' },
+  cameraOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
   },
-  camLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
-  camName: { color: '#00ffcc', fontSize: 18, fontWeight: '700', marginTop: 4 },
-  camControls: { backgroundColor: '#000', padding: 24, gap: 12 },
-  captureBtn: {
-    backgroundColor: '#00ffcc', borderRadius: 20, paddingVertical: 18, alignItems: 'center',
+  toggleBtn: {
+    position: 'absolute', top: 16, right: 16,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
   },
-  captureBtnText: { color: '#000', fontWeight: '700', fontSize: 16 },
-  cancelText: { color: 'rgba(255,255,255,0.4)', textAlign: 'center', fontSize: 14 },
-  // Success
-  successBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  successIcon: { fontSize: 64, marginBottom: 16 },
-  successTitle: { fontSize: 30, fontWeight: '700', color: '#000' },
-  successSub: { color: '#666', fontSize: 14, textAlign: 'center', marginTop: 8, marginBottom: 32, lineHeight: 20 },
-  doneBtn: { backgroundColor: '#000', borderRadius: 20, paddingVertical: 16, paddingHorizontal: 40, marginBottom: 12 },
-  doneBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  anotherBtn: { paddingVertical: 10 },
-  anotherText: { color: '#999', fontSize: 14 },
+  toggleBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  dashedCircle: {
+    width: width * 0.6, height: width * 0.6,
+    borderRadius: width * 0.3,
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)',
+    borderStyle: 'dashed',
+    position: 'absolute',
+  },
+  scannerLineWrapper: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  scannerLine: {
+    width: '100%', height: 2,
+    backgroundColor: '#60a5fa',
+    shadowColor: '#60a5fa', shadowOpacity: 1, shadowRadius: 10, elevation: 5,
+  },
+  successCircle: {
+    position: 'absolute',
+    width: width * 0.6, height: width * 0.6,
+    borderRadius: width * 0.3,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  successCheck: { fontSize: 64, color: '#fff', fontWeight: 'bold' },
+  statusPill: {
+    position: 'absolute', bottom: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 16, paddingVertical: 8,
+    borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  statusPillSuccess: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderColor: 'rgba(16, 185, 129, 0.5)',
+  },
+  statusText: { color: '#fff', fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
+  statusTextSuccess: { color: '#ecfdf5' },
+
+  // Form Section
+  formContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+    padding: 24,
+    justifyContent: 'space-between',
+  },
+  inputWrapper: {
+    marginTop: 20,
+  },
+  input: {
+    borderBottomWidth: 1, borderBottomColor: '#e5e5e5',
+    paddingVertical: 12, fontSize: 18, color: '#000', fontWeight: '500',
+  },
+  inputHint: {
+    color: '#999', fontSize: 12, marginTop: 12, lineHeight: 18,
+  },
+  enrollBtn: {
+    backgroundColor: '#737373', // Gray to match design
+    borderRadius: 24,
+    paddingVertical: 18,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+  },
+  enrollBtnDisabled: { opacity: 0.5 },
+  enrollBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

@@ -1,14 +1,25 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { getAllUsers, saveAuthLog } from '../lib/db';
 import { computeSimilarity, verifyLivenessChallenge, generateRandomChallenge } from '../lib/vision';
 import { useAppStore } from '../store';
+import { BlurView } from 'expo-blur';
+import Animated, { 
+  FadeInUp, 
+  FadeInDown, 
+  useSharedValue, 
+  withRepeat, 
+  withTiming, 
+  Easing, 
+  useAnimatedStyle 
+} from 'react-native-reanimated';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Liveness'>;
 type Route = RouteProp<RootStackParamList, 'Liveness'>;
@@ -21,31 +32,34 @@ export function LivenessScreen() {
   const { embedding, capturedAt } = route.params;
 
   const { refreshPendingLogs } = useAppStore();
+  const [permission] = useCameraPermissions();
   const [phase, setPhase] = useState<Phase>('recognizing');
   const [matchedUser, setMatchedUser] = useState<{ name: string; id: string; score: number } | null>(null);
   const [challenge, setChallenge] = useState(generateRandomChallenge());
-  const [message, setMessage] = useState('Analyzing biometric data...');
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
+  // Spin animation for loaders
+  const spinVal = useSharedValue(0);
+  
   useEffect(() => {
-    // Pulse animation for scanning
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.05, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-      ])
+    spinVal.value = withRepeat(
+      withTiming(360, { duration: 2000, easing: Easing.linear }),
+      -1,
+      false
     );
-    pulse.start();
-    return () => pulse.stop();
   }, []);
+
+  const spinStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spinVal.value}deg` }]
+  }));
+  const spinStyleReverse = useAnimatedStyle(() => ({
+    transform: [{ rotate: `-${spinVal.value}deg` }]
+  }));
 
   useEffect(() => {
     runRecognition();
   }, []);
 
   async function runRecognition() {
-    setMessage('Analyzing biometric data...');
     await new Promise(r => setTimeout(r, 1200));
 
     const users = await getAllUsers();
@@ -73,13 +87,12 @@ export function LivenessScreen() {
         confidenceScore: 0,
       });
       await refreshPendingLogs();
-      setMessage('❌ Face not recognized. Access denied.');
       setPhase('failed');
+      setTimeout(() => navigation.navigate('Dashboard'), 2500);
       return;
     }
 
     setMatchedUser(matched);
-    setMessage(`Identity confirmed: ${matched.name}`);
     await new Promise(r => setTimeout(r, 800));
     setPhase('challenge');
     runChallenge(matched);
@@ -98,130 +111,196 @@ export function LivenessScreen() {
     await refreshPendingLogs();
 
     if (result.passed) {
-      setMessage(`✅ Welcome, ${matched.name}!`);
       setPhase('success');
     } else {
-      setMessage('Liveness check failed. Please try again.');
       setPhase('failed');
     }
+    setTimeout(() => navigation.navigate('Dashboard'), 2500);
   }
 
-  const bgColor = phase === 'success' ? '#022c1a' : phase === 'failed' ? '#2c0202' : '#000';
-  const accentColor = phase === 'success' ? '#00ff88' : phase === 'failed' ? '#ff4444' : '#00ffcc';
+  if (!permission?.granted) {
+    return <View style={styles.container} />;
+  }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]}>
-      {/* Sci-fi HUD circle */}
-      <View style={styles.hudContainer}>
-        <Animated.View style={[styles.hudRing, { borderColor: accentColor, transform: [{ scale: pulseAnim }] }]}>
-          <View style={[styles.hudInner, { borderColor: `${accentColor}44` }]}>
-            {phase === 'recognizing' || phase === 'challenge' ? (
-              <ActivityIndicator color={accentColor} size="large" />
-            ) : (
-              <Text style={[styles.hudIcon, { color: accentColor }]}>
-                {phase === 'success' ? '✓' : '✗'}
-              </Text>
-            )}
-          </View>
-        </Animated.View>
-
-        {/* Decorative dots */}
-        {[...Array(8)].map((_, i) => (
-          <View
-            key={i}
-            style={[styles.orbitDot, {
-              backgroundColor: accentColor,
-              transform: [
-                { rotate: `${i * 45}deg` },
-                { translateX: 80 },
-              ],
-            }]}
-          />
-        ))}
+    <SafeAreaView style={styles.container}>
+      {/* Background Camera */}
+      <View style={StyleSheet.absoluteFill}>
+        <CameraView style={{ flex: 1 }} facing="front" />
       </View>
 
-      {/* Phase label */}
-      <Text style={[styles.phaseLabel, { color: accentColor }]}>
-        {phase === 'recognizing' ? 'BIOMETRIC SCAN' :
-          phase === 'challenge' ? 'LIVENESS CHECK' :
-          phase === 'success' ? 'ACCESS GRANTED' : 'ACCESS DENIED'}
-      </Text>
+      {/* Top Bar matching web MobileContainer structure */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Liveness Test</Text>
+      </View>
 
-      {/* Message */}
-      <Text style={styles.message}>{message}</Text>
+      {/* Floating Card at Bottom */}
+      <View style={styles.bottomContainer}>
+        <Animated.View entering={FadeInUp.springify().mass(0.8)} style={styles.cardContainer}>
+          <BlurView intensity={80} tint="light" style={styles.glassCard}>
+            
+            {(phase === 'recognizing' || phase === 'challenge') && (
+              <View style={styles.contentWrapper}>
+                {/* Loader Rings */}
+                <View style={styles.loaderContainer}>
+                  <Animated.View style={[styles.outerRing, spinStyle]} />
+                  <Animated.View style={[styles.innerRing, spinStyleReverse]} />
+                </View>
 
-      {/* Challenge instruction */}
-      {phase === 'challenge' && (
-        <View style={[styles.challengeBox, { borderColor: accentColor + '44' }]}>
-          <Text style={[styles.challengeLabel, { color: accentColor }]}>CHALLENGE</Text>
-          <Text style={styles.challengeText}>{challenge.label}</Text>
-        </View>
-      )}
+                <Text style={styles.title}>Security Protocol</Text>
+                <Text style={styles.subtitle}>
+                  {phase === 'recognizing' ? 'Analyzing biometric feed...' : 'Awaiting physical confirmation'}
+                </Text>
 
-      {/* Match info */}
-      {matchedUser && phase !== 'recognizing' && (
-        <View style={styles.matchInfo}>
-          <Text style={styles.matchLabel}>IDENTITY</Text>
-          <Text style={styles.matchName}>{matchedUser.name}</Text>
-          <Text style={styles.matchScore}>Confidence: {(matchedUser.score * 100).toFixed(1)}%</Text>
-        </View>
-      )}
+                {phase === 'challenge' && (
+                  <Animated.View entering={FadeInDown} style={styles.challengeBox}>
+                    <Text style={styles.challengeText}>{challenge.label}</Text>
+                  </Animated.View>
+                )}
 
-      {/* Done button */}
-      {(phase === 'success' || phase === 'failed') && (
-        <TouchableOpacity
-          style={[styles.doneBtn, { backgroundColor: accentColor }]}
-          onPress={() => navigation.navigate('Dashboard')}
-        >
-          <Text style={[styles.doneBtnText, { color: phase === 'success' ? '#000' : '#fff' }]}>
-            {phase === 'success' ? 'Continue' : 'Try Again'}
-          </Text>
-        </TouchableOpacity>
-      )}
+                <View style={styles.statusBadge}>
+                  <View style={styles.statusDot} />
+                  <Text style={styles.statusText}>Analyzing Feed</Text>
+                </View>
+              </View>
+            )}
+
+            {phase === 'success' && (
+              <Animated.View entering={FadeInDown.springify()} style={styles.contentWrapper}>
+                <View style={styles.successIconBox}>
+                  <Text style={styles.iconText}>✓</Text>
+                </View>
+                <Text style={styles.title}>Verified</Text>
+                {matchedUser && (
+                  <Text style={styles.matchName}>{matchedUser.name}</Text>
+                )}
+                <View style={styles.accessBadge}>
+                  <Text style={styles.accessBadgeText}>ACCESS GRANTED</Text>
+                </View>
+              </Animated.View>
+            )}
+
+            {phase === 'failed' && (
+              <Animated.View entering={FadeInDown.springify()} style={styles.contentWrapper}>
+                <View style={styles.failIconBox}>
+                  <Text style={styles.iconText}>✗</Text>
+                </View>
+                <Text style={styles.title}>Challenge Failed</Text>
+                <Text style={styles.subtitle}>Attempt securely logged.</Text>
+              </Animated.View>
+            )}
+
+          </BlurView>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  hudContainer: { width: 200, height: 200, alignItems: 'center', justifyContent: 'center', marginBottom: 32 },
-  hudRing: {
-    width: 180, height: 180, borderRadius: 90, borderWidth: 2,
+  container: { flex: 1, backgroundColor: '#000' },
+  header: {
+    padding: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  bottomContainer: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    padding: 24, paddingBottom: 48,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  cardContainer: {
+    width: '100%', maxWidth: 400,
+    borderRadius: 44,
+    overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  glassCard: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  contentWrapper: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  loaderContainer: {
+    width: 64, height: 64,
+    marginBottom: 24,
     alignItems: 'center', justifyContent: 'center',
-    shadowOpacity: 0.6, shadowRadius: 20,
   },
-  hudInner: {
-    width: 140, height: 140, borderRadius: 70, borderWidth: 1,
-    alignItems: 'center', justifyContent: 'center',
+  outerRing: {
+    position: 'absolute',
+    width: '100%', height: '100%',
+    borderRadius: 32,
+    borderWidth: 2,
+    borderColor: 'rgba(0,0,0,0.05)',
+    borderTopColor: 'rgba(0,0,0,0.4)',
   },
-  hudIcon: { fontSize: 56, fontWeight: '300' },
-  orbitDot: {
-    position: 'absolute', width: 5, height: 5, borderRadius: 2.5,
-    opacity: 0.5,
+  innerRing: {
+    position: 'absolute',
+    width: 32, height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#000',
+    borderStyle: 'dashed',
   },
-  phaseLabel: {
-    fontSize: 11, fontWeight: '700', letterSpacing: 3, marginBottom: 12,
+  title: {
+    fontSize: 20, fontWeight: '600', color: '#000', marginBottom: 6, letterSpacing: -0.5,
   },
-  message: {
-    fontSize: 16, color: 'rgba(255,255,255,0.7)', textAlign: 'center',
-    lineHeight: 22, marginBottom: 24,
+  subtitle: {
+    fontSize: 13, color: '#666', marginBottom: 20,
   },
   challengeBox: {
-    borderWidth: 1, borderRadius: 20, padding: 20, width: '100%',
-    alignItems: 'center', marginBottom: 24,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: '#000',
+    borderRadius: 24,
+    paddingVertical: 20, paddingHorizontal: 24,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 24,
   },
-  challengeLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 8 },
-  challengeText: { color: '#fff', fontSize: 17, fontWeight: '600', textAlign: 'center' },
-  matchInfo: {
-    alignItems: 'center', marginBottom: 24,
+  challengeText: {
+    color: '#fff', fontSize: 18, fontWeight: '600', letterSpacing: 0.5,
   },
-  matchLabel: { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.3)', letterSpacing: 2, marginBottom: 4 },
-  matchName: { fontSize: 22, fontWeight: '700', color: '#fff' },
-  matchScore: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
-  doneBtn: {
-    borderRadius: 20, paddingVertical: 16, paddingHorizontal: 48,
-    position: 'absolute', bottom: 60,
+  statusBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 8,
   },
-  doneBtnText: { fontWeight: '700', fontSize: 15 },
+  statusDot: {
+    width: 6, height: 6, borderRadius: 3, backgroundColor: '#000',
+  },
+  statusText: {
+    fontSize: 10, color: '#666', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase',
+  },
+  successIconBox: {
+    width: 80, height: 80, borderRadius: 24, backgroundColor: '#000',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 24,
+  },
+  failIconBox: {
+    width: 80, height: 80, borderRadius: 24, backgroundColor: '#f5f5f5',
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 24,
+  },
+  iconText: {
+    fontSize: 40, color: '#fff',
+  },
+  matchName: {
+    fontSize: 16, fontWeight: '500', color: '#666', marginBottom: 12,
+  },
+  accessBadge: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    paddingVertical: 6, paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  accessBadgeText: {
+    fontSize: 10, fontWeight: '700', letterSpacing: 2, color: '#000',
+  },
 });

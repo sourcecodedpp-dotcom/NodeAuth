@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, Alert, KeyboardAvoidingView, Platform, ScrollView,
+  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { useAppStore } from '../store';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { Fingerprint } from 'lucide-react-native';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'SupervisorLogin'>;
 
@@ -16,84 +18,118 @@ const SUPERVISOR_PIN = '1234';
 export function SupervisorLoginScreen() {
   const navigation = useNavigation<Nav>();
   const { setSupervisorAuthed } = useAppStore();
-  const [pin, setPin] = useState('');
+  const [id, setId] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  function handleLogin() {
-    if (pin === SUPERVISOR_PIN) {
-      setSupervisorAuthed(true);
-      navigation.replace('Dashboard');
-    } else {
-      setError('Invalid PIN. Try 1234.');
-      setPin('');
-    }
-  }
+  const handleLogin = () => {
+    setIsLoading(true);
+    setError('');
+    setTimeout(() => {
+      if (password === SUPERVISOR_PIN) {
+        setSupervisorAuthed(true);
+        navigation.replace('Dashboard');
+      } else {
+        setError('Invalid PIN. Try 1234.');
+        setIsLoading(false);
+        setPassword('');
+      }
+    }, 800);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.scroll}>
-          <View style={styles.header}>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>🔐</Text>
+        <View style={styles.content}>
+          
+          <Animated.View entering={FadeInDown.duration(600).springify()} style={styles.header}>
+            <View style={styles.iconBox}>
+              <Fingerprint color="#fff" size={32} strokeWidth={1.5} />
             </View>
-            <Text style={styles.title}>Supervisor Access</Text>
-            <Text style={styles.subtitle}>Enter your 4-digit PIN to unlock the system</Text>
-          </View>
+            <Text style={styles.title}>Login</Text>
+            <Text style={styles.subtitle}>Sign in to manage the system</Text>
+          </Animated.View>
 
-          <View style={styles.card}>
-            <Text style={styles.label}>SUPERVISOR PIN</Text>
-            <TextInput
-              style={styles.input}
-              value={pin}
-              onChangeText={t => { setPin(t); setError(''); }}
-              placeholder="••••"
-              placeholderTextColor="rgba(0,0,0,0.25)"
-              keyboardType="numeric"
-              secureTextEntry
-              maxLength={6}
-              autoFocus
-            />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Animated.View entering={FadeInUp.duration(600).delay(100).springify()} style={styles.form}>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={id}
+                onChangeText={(t) => { setId(t); setError(''); }}
+                placeholder="Supervisor ID"
+                placeholderTextColor="#999"
+                autoCapitalize="none"
+              />
+            </View>
 
-            <TouchableOpacity style={styles.button} onPress={handleLogin}>
-              <Text style={styles.buttonText}>Authenticate</Text>
+            <View style={[styles.inputWrapper, { marginTop: 24 }]}>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={(t) => { setPassword(t); setError(''); }}
+                placeholder="Password"
+                placeholderTextColor="#999"
+                secureTextEntry
+              />
+            </View>
+
+            {!!error && <Text style={styles.errorText}>{error}</Text>}
+
+            <TouchableOpacity 
+              style={[styles.loginBtn, (isLoading || !id || !password) && styles.loginBtnDisabled]}
+              onPress={handleLogin}
+              disabled={isLoading || !id || !password}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.loginBtnText}>Continue</Text>
+              )}
             </TouchableOpacity>
-          </View>
+          </Animated.View>
 
-          <Text style={styles.hint}>Default PIN: 1234</Text>
-        </ScrollView>
+          <Animated.View entering={FadeInUp.duration(600).delay(400)} style={styles.footer}>
+            <Text style={styles.footerText}>AUTHORIZED PERSONNEL ONLY</Text>
+          </Animated.View>
+
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  scroll: { flexGrow: 1, padding: 24, justifyContent: 'center' },
-  header: { alignItems: 'center', marginBottom: 32 },
-  badge: {
-    width: 72, height: 72, borderRadius: 24,
-    backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', marginBottom: 20,
+  container: { flex: 1, backgroundColor: '#fff' },
+  content: { flex: 1, paddingHorizontal: 32, paddingTop: '15%', paddingBottom: 32 },
+  
+  header: { alignItems: 'center', marginBottom: 64 },
+  iconBox: {
+    width: 64, height: 64, backgroundColor: '#000',
+    borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+    marginBottom: 24,
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 15, elevation: 10,
   },
-  badgeText: { fontSize: 28 },
-  title: { fontSize: 26, fontWeight: '700', color: '#000', letterSpacing: -0.5 },
-  subtitle: { fontSize: 13, color: '#666', marginTop: 8, textAlign: 'center', lineHeight: 18 },
-  card: {
-    backgroundColor: '#fff', borderRadius: 28, padding: 24,
-    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 20, elevation: 4,
-  },
-  label: { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: '#999', marginBottom: 10 },
+  title: { fontSize: 26, fontWeight: '600', color: '#000', letterSpacing: -0.5, marginBottom: 8 },
+  subtitle: { fontSize: 13, color: '#666', fontWeight: '500', letterSpacing: 0.5 },
+
+  form: { flex: 1, maxWidth: 400, width: '100%', alignSelf: 'center' },
+  inputWrapper: { position: 'relative' },
   input: {
-    borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.1)', borderRadius: 16,
-    padding: 16, fontSize: 28, letterSpacing: 12, color: '#000',
-    textAlign: 'center', marginBottom: 16,
+    borderBottomWidth: 1, borderBottomColor: '#e5e5e5',
+    paddingVertical: 12, fontSize: 18, color: '#000', fontWeight: '500',
   },
-  error: { color: '#e74c3c', fontSize: 12, textAlign: 'center', marginBottom: 12 },
-  button: {
-    backgroundColor: '#000', borderRadius: 20, paddingVertical: 16,
-    alignItems: 'center',
+  errorText: { color: '#e74c3c', fontSize: 12, marginTop: 8 },
+  
+  loginBtn: {
+    backgroundColor: '#000', borderRadius: 24, paddingVertical: 18,
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: 40,
+    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
   },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  hint: { textAlign: 'center', color: '#aaa', fontSize: 11, marginTop: 24 },
+  loginBtnDisabled: { opacity: 0.5, shadowOpacity: 0 },
+  loginBtnText: { color: '#fff', fontSize: 16, fontWeight: '500' },
+
+  footer: { marginTop: 'auto', paddingTop: 24, alignItems: 'center' },
+  footerText: { fontSize: 9, color: '#aaa', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
 });
