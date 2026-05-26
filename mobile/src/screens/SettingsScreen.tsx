@@ -11,6 +11,7 @@ import { performMasterSync } from '../lib/db';
 import { TopBar } from '../components/TopBar';
 import { Dock } from '../components/Dock';
 import Animated, { FadeInUp } from 'react-native-reanimated';
+import { CloudUpload, CloudOff, LogOut } from 'lucide-react-native';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
@@ -45,7 +46,7 @@ export function SettingsScreen() {
 
   const handleSignOut = () => {
     setSupervisorAuthed(false);
-    navigation.navigate('SupervisorLogin');
+    navigation.replace('SupervisorLogin');
   };
 
   return (
@@ -58,7 +59,11 @@ export function SettingsScreen() {
           <View style={styles.blurCornerBg} />
           
           <View style={styles.iconBox}>
-            <Text style={styles.icon}>{isOnline ? '☁️' : '📵'}</Text>
+            {isOnline ? (
+              <CloudUpload color="#fff" size={32} strokeWidth={1.5} />
+            ) : (
+              <CloudOff color="rgba(255,255,255,0.5)" size={32} strokeWidth={1.5} />
+            )}
           </View>
           
           <Text style={styles.cardTitle}>Cloud Sync</Text>
@@ -96,7 +101,8 @@ export function SettingsScreen() {
         {/* Sign out */}
         <Animated.View entering={FadeInUp.duration(400).delay(100)} style={styles.signOutContainer}>
           <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-            <Text style={styles.signOutText}>🚪 Supervisor Sign Out</Text>
+            <LogOut color="#000" size={20} strokeWidth={1.5} style={{ marginRight: 8 }} />
+            <Text style={styles.signOutText}>Supervisor Sign Out</Text>
           </TouchableOpacity>
         </Animated.View>
 
@@ -120,9 +126,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden', position: 'relative',
   },
   blurCornerBg: {
-    position: 'absolute', top: 0, right: 0,
-    width: 120, height: 120,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    position: 'absolute', top: -20, right: -20,
+    width: 140, height: 140,
+    backgroundColor: 'rgba(0,0,0,0.03)',
     borderBottomLeftRadius: 100,
   },
   iconBox: {
@@ -130,7 +136,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: 24,
     shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 5,
   },
-  icon: { fontSize: 32, color: '#fff' },
   cardTitle: { fontSize: 24, fontWeight: '500', color: '#000', marginBottom: 8, letterSpacing: -0.5 },
   badge: {
     backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
@@ -172,7 +177,7 @@ const styles = StyleSheet.create({
   },
   signOutBtn: {
     backgroundColor: '#fff', borderRadius: 26, paddingVertical: 16,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', flexDirection: 'row',
     borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
     shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5,
   },
