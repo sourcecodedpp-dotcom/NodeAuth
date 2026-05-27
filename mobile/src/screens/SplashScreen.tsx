@@ -98,7 +98,7 @@ export function SplashScreen() {
             key={textIndex}
             entering={FadeInUp.duration(400)}
             exiting={FadeOutUp.duration(400)}
-            style={[styles.text, textIndex === 0 ? styles.textLarge : styles.textSmall]}
+            style={[styles.text, textIndex === 0 ? styles.textLarge : styles.textSmall, { position: 'absolute' }]}
           >
             {INTRO_TEXTS[textIndex]}
           </Animated.Text>
