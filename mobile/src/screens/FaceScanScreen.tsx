@@ -8,7 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { extractFaceEmbedding, loadModels } from '../lib/vision';
-import { ScanFace, CameraReverse } from 'lucide-react-native';
+import { ScanFace, SwitchCamera } from 'lucide-react-native';
 import { TopBar } from '../components/TopBar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'FaceScan'>;
@@ -88,7 +88,7 @@ export function FaceScanScreen() {
                 <Text style={styles.recText}>REC</Text>
               </View>
               <TouchableOpacity style={styles.switchCamBtn} onPress={toggleCamera}>
-                <CameraReverse color="#fff" size={20} />
+                <SwitchCamera color="#fff" size={20} />
               </TouchableOpacity>
             </View>
 
