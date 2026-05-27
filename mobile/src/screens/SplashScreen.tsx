@@ -96,8 +96,8 @@ export function SplashScreen() {
         <View style={styles.textContainer}>
           <Animated.Text 
             key={textIndex}
-            entering={FadeInUp.duration(400)}
-            exiting={FadeOutUp.duration(400)}
+            entering={FadeInUp.duration(300).delay(200)}
+            exiting={FadeOutUp.duration(200)}
             style={[styles.text, textIndex === 0 ? styles.textLarge : styles.textSmall, { position: 'absolute' }]}
           >
             {INTRO_TEXTS[textIndex]}
