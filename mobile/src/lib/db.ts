@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, AuthLog } from '../types';
-import { pushLogsToCloud } from './firebase';
+import { pushLogsToAWS } from './aws';
 
 const USERS_KEY = '@faceguard_users';
 const LOGS_KEY = '@faceguard_logs';
@@ -46,13 +46,13 @@ export async function performMasterSync() {
   const pendingLogs = await getPendingLogs();
   if (pendingLogs.length === 0) return 0;
 
-  const success = await pushLogsToCloud(pendingLogs);
+  const success = await pushLogsToAWS(pendingLogs);
   if (success) {
     const logIds = pendingLogs.map(l => l.id);
     await purgeLogs(logIds);
     return logIds.length;
   } else {
-    throw new Error("Failed to sync to cloud backend");
+    throw new Error("Failed to sync to AWS backend");
   }
 }
 
