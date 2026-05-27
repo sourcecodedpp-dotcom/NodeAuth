@@ -18,7 +18,6 @@ const SUPERVISOR_PIN = '1234';
 export function SupervisorLoginScreen() {
   const navigation = useNavigation<Nav>();
   const { setSupervisorAuthed } = useAppStore();
-  const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -52,17 +51,6 @@ export function SupervisorLoginScreen() {
           </Animated.View>
 
           <Animated.View entering={FadeInUp.duration(600).delay(100).springify()} style={styles.form}>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={id}
-                onChangeText={(t) => { setId(t); setError(''); }}
-                placeholder="Supervisor ID"
-                placeholderTextColor="#999"
-                autoCapitalize="none"
-              />
-            </View>
-
             <View style={[styles.inputWrapper, { marginTop: 24 }]}>
               <TextInput
                 style={styles.input}
@@ -77,9 +65,9 @@ export function SupervisorLoginScreen() {
             {!!error && <Text style={styles.errorText}>{error}</Text>}
 
             <TouchableOpacity 
-              style={[styles.loginBtn, (isLoading || !id || !password) && styles.loginBtnDisabled]}
+              style={[styles.loginBtn, (isLoading || !password) && styles.loginBtnDisabled]}
               onPress={handleLogin}
-              disabled={isLoading || !id || !password}
+              disabled={isLoading || !password}
             >
               {isLoading ? (
                 <ActivityIndicator color="#fff" />
@@ -91,6 +79,7 @@ export function SupervisorLoginScreen() {
 
           <Animated.View entering={FadeInUp.duration(600).delay(400)} style={styles.footer}>
             <Text style={styles.footerText}>AUTHORIZED PERSONNEL ONLY</Text>
+            <Text style={styles.hintText}>For testing, use password: 1234</Text>
           </Animated.View>
 
         </View>
@@ -132,4 +121,5 @@ const styles = StyleSheet.create({
 
   footer: { marginTop: 'auto', paddingTop: 24, alignItems: 'center' },
   footerText: { fontSize: 9, color: '#aaa', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
+  hintText: { fontSize: 12, color: '#666', marginTop: 8, fontStyle: 'italic' },
 });
