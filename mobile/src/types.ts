@@ -13,7 +13,7 @@ export interface AuthLog {
   timestamp: number;
   status: 'success' | 'failed' | 'liveness_failed';
   confidenceScore: number;
-  synced: boolean;
+  synced: boolean | number;
   location?: { lat: number; lng: number };
 }
 
@@ -28,7 +28,7 @@ export type RootStackParamList = {
   SupervisorLogin: undefined;
   Dashboard: undefined;
   FaceScan: undefined;
-  Liveness: { embedding: number[]; capturedAt: number };
+  Liveness: { embedding: number[]; capturedAt: number; skipRecognition?: boolean; matchedName?: string };
   Register: undefined;
   Settings: undefined;
 };

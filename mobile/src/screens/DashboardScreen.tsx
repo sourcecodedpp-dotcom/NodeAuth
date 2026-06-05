@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { useAppStore } from '../store';
-import { getAllUsers } from '../lib/db';
+import { getAllUsers, performMasterSync } from '../lib/db';
 import { Dock } from '../components/Dock';
 import { 
   ShieldCheck, 
@@ -18,23 +18,61 @@ import {
   Camera, 
   User, 
   Fingerprint,
-  Activity
+  Activity,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
+  CloudOff
 } from 'lucide-react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Dashboard'>;
 
-const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
 export function DashboardScreen() {
   const navigation = useNavigation<Nav>();
-  const { isOnline, pendingSyncCount, refreshPendingLogs } = useAppStore();
+  const { isOnline, pendingSyncCount, isSyncing, setIsSyncing, refreshPendingLogs } = useAppStore();
   const [userCount, setUserCount] = useState<number>(0);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<'success' | 'fail' | 'empty' | null>(null);
+  const prevOnlineRef = useRef<boolean>(isOnline);
 
   useEffect(() => {
     refreshPendingLogs();
     getAllUsers().then(users => setUserCount(users.length));
   }, []);
+
+  // Auto-sync when device transitions from offline → online with pending logs
+  useEffect(() => {
+    const wasOffline = !prevOnlineRef.current;
+    prevOnlineRef.current = isOnline;
+
+    if (isOnline && wasOffline && pendingSyncCount > 0 && !isSyncing) {
+      handleSync();
+    }
+  }, [isOnline, handleSync]);
+
+  const handleSync = useCallback(async () => {
+    if (isSyncing) return;
+    setSyncResult(null);
+    setIsSyncing(true);
+    try {
+      const synced = await performMasterSync();
+      await refreshPendingLogs();
+      if (synced === 0) {
+        setSyncResult('empty');
+      } else {
+        setSyncResult('success');
+        setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }
+    } catch {
+      setSyncResult('fail');
+    } finally {
+      setIsSyncing(false);
+      // Clear the result badge after 4 seconds
+      setTimeout(() => setSyncResult(null), 4000);
+    }
+  }, [isSyncing, setIsSyncing, refreshPendingLogs]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -63,13 +101,10 @@ export function DashboardScreen() {
 
         <View style={styles.contentGrid}>
           {/* MAIN ACTION */}
-          <AnimatedTouchableOpacity
-            entering={FadeInUp.delay(100)}
+          <Animated.View entering={FadeInUp.delay(100)}>
+          <TouchableOpacity
             style={styles.primaryCard}
             onPress={() => {
-              if (typeof document !== 'undefined' && document.activeElement) {
-                (document.activeElement as HTMLElement).blur();
-              }
               navigation.navigate('FaceScan');
             }}
             activeOpacity={0.85}
@@ -85,7 +120,8 @@ export function DashboardScreen() {
             <View style={styles.primaryIconBox}>
               <ScanFace size={28} color="#fff" strokeWidth={1.5} />
             </View>
-          </AnimatedTouchableOpacity>
+          </TouchableOpacity>
+          </Animated.View>
 
           {/* STATS GRID */}
           <Animated.View entering={FadeInUp.delay(200)} style={styles.statsRow}>
@@ -124,8 +160,98 @@ export function DashboardScreen() {
             </View>
           </Animated.View>
 
+          {/* SYNC & PURGE CARD */}
+          <Animated.View entering={FadeInUp.delay(250)}>
+            <View style={styles.syncCard}>
+              {/* Card Header */}
+              <View style={styles.syncHeader}>
+                <View style={styles.syncTitleRow}>
+                  <View style={styles.syncIconCircle}>
+                    <RefreshCw size={16} color="#525252" strokeWidth={2} />
+                  </View>
+                  <View>
+                    <Text style={styles.syncTitle}>SYNC & PURGE</Text>
+                    <Text style={styles.syncSubtitle}>
+                      {pendingSyncCount > 0
+                        ? `${pendingSyncCount} log${pendingSyncCount !== 1 ? 's' : ''} pending sync`
+                        : 'All logs synced'}
+                    </Text>
+                  </View>
+                </View>
+                {/* Status indicator */}
+                <View style={[
+                  styles.syncStatusBadge,
+                  { backgroundColor: isOnline ? '#ecfdf5' : '#fafafa',
+                    borderColor: isOnline ? '#d1fae5' : '#e5e5e5' },
+                ]}>
+                  {isOnline
+                    ? <Activity size={10} color="#059669" />
+                    : <CloudOff size={10} color="#a3a3a3" />}
+                  <Text style={[
+                    styles.syncStatusText,
+                    { color: isOnline ? '#059669' : '#a3a3a3' },
+                  ]}>
+                    {isOnline ? 'ONLINE' : 'OFFLINE'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Last Sync Time */}
+              {lastSyncTime && (
+                <Text style={styles.lastSyncText}>Last synced: {lastSyncTime}</Text>
+              )}
+
+              {/* Result Feedback */}
+              {syncResult && (
+                <View style={[
+                  styles.syncFeedback,
+                  syncResult === 'success' && { backgroundColor: '#ecfdf5', borderColor: '#d1fae5' },
+                  syncResult === 'empty' && { backgroundColor: '#fafafa', borderColor: '#e5e5e5' },
+                  syncResult === 'fail' && { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
+                ]}>
+                  {syncResult === 'success' && <CheckCircle size={14} color="#059669" />}
+                  {syncResult === 'empty' && <CheckCircle size={14} color="#737373" />}
+                  {syncResult === 'fail' && <AlertCircle size={14} color="#dc2626" />}
+                  <Text style={[
+                    styles.syncFeedbackText,
+                    syncResult === 'success' && { color: '#059669' },
+                    syncResult === 'empty' && { color: '#737373' },
+                    syncResult === 'fail' && { color: '#dc2626' },
+                  ]}>
+                    {syncResult === 'success' && 'Sync complete — logs purged'}
+                    {syncResult === 'empty' && 'No pending logs to sync'}
+                    {syncResult === 'fail' && 'Sync failed — will retry'}
+                  </Text>
+                </View>
+              )}
+
+              {/* Sync Button */}
+              <TouchableOpacity
+                style={[
+                  styles.syncButton,
+                  (isSyncing || !isOnline) && styles.syncButtonDisabled,
+                ]}
+                onPress={handleSync}
+                disabled={isSyncing || !isOnline}
+                activeOpacity={0.8}
+              >
+                {isSyncing ? (
+                  <ActivityIndicator size="small" color="#a3a3a3" />
+                ) : (
+                  <RefreshCw size={14} color={isOnline ? '#fff' : '#737373'} strokeWidth={2.5} />
+                )}
+                <Text style={[
+                  styles.syncButtonText,
+                  !isOnline && { color: '#737373' },
+                ]}>
+                  {isSyncing ? 'Syncing…' : 'Sync & Purge'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+
           {/* SYSTEM STATUS PILLS */}
-          <Animated.View entering={FadeInUp.delay(300)} style={styles.pillsRow}>
+          <Animated.View entering={FadeInUp.delay(350)} style={styles.pillsRow}>
             <View style={styles.sysPill}>
               <Cpu size={14} color="#525252" />
               <Text style={styles.sysPillText}>CONFIG: READY</Text>
@@ -156,7 +282,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingHorizontal: 24,
-    paddingTop: 40,
+    paddingTop: 36,
     paddingBottom: 16,
   },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
@@ -192,9 +318,9 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: '#fafafa', borderRadius: 24, padding: 20,
     borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
   },
-  statHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  statHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   iconCircle: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: '#fff',
+    width: 48, height: 48, borderRadius: 18, backgroundColor: '#fff',
     borderWidth: 1, borderColor: '#e5e5e5', alignItems: 'center', justifyContent: 'center',
   },
   liveBadge: {
@@ -216,4 +342,99 @@ const styles = StyleSheet.create({
     borderRadius: 10, borderWidth: 1, borderColor: '#e5e5e5',
   },
   sysPillText: { fontSize: 9, fontWeight: '700', color: '#525252', letterSpacing: 1 },
+
+  /* ── Sync & Purge Card ── */
+  syncCard: {
+    backgroundColor: '#171717',
+    borderRadius: 24,
+    padding: 24,
+  },
+  syncHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  syncTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  syncIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: '#262626',
+    borderWidth: 1,
+    borderColor: '#404040',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#a3a3a3',
+    letterSpacing: 2,
+    marginBottom: 2,
+  },
+  syncSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#d4d4d4',
+    letterSpacing: -0.2,
+  },
+  syncStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  syncStatusText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  lastSyncText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#737373',
+    marginTop: 12,
+    marginLeft: 56,
+  },
+  syncFeedback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  syncFeedbackText: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#404040',
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 16,
+  },
+  syncButtonDisabled: {
+    backgroundColor: '#262626',
+  },
+  syncButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.5,
+  },
 });

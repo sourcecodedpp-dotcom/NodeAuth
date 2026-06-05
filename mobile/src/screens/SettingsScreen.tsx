@@ -28,9 +28,8 @@ export function SettingsScreen() {
     }
     setSyncing(true);
     setSyncMessage('Connecting to endpoint...');
-    await new Promise(r => setTimeout(r, 800));
-
     try {
+      await new Promise(r => setTimeout(r, 800));
       const count = await performMasterSync();
       setSyncMessage(`Sync complete. ${count} logs securely purged.`);
       await refreshPendingLogs();
@@ -84,7 +83,7 @@ export function SettingsScreen() {
 
           {!!syncMessage && (
             <Animated.View entering={FadeInUp} style={styles.messageBox}>
-              <Text style={styles.messageText}>> {syncMessage}</Text>
+              <Text style={styles.messageText}>{`> ${syncMessage}`}</Text>
             </Animated.View>
           )}
         </Animated.View>
@@ -173,7 +172,7 @@ const styles = StyleSheet.create({
   // Sign out container
   signOutContainer: {
     backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 32, padding: 8,
-    marginTop: 'auto',
+    marginTop: 32,
   },
   signOutBtn: {
     backgroundColor: '#fff', borderRadius: 26, paddingVertical: 16,

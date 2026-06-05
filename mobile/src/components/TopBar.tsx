@@ -20,7 +20,7 @@ export function TopBar({ title, showBack = false }: TopBarProps) {
   }, []);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+    <View style={[styles.container, { paddingHorizontal: 16, paddingVertical: 12 }]}>
       <View style={styles.leftGroup}>
         {showBack && (
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>

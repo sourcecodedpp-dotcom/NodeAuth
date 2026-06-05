@@ -27,10 +27,11 @@ export function SupervisorLoginScreen() {
     setError('');
     setTimeout(() => {
       if (password === SUPERVISOR_PIN) {
+        setIsLoading(false);
         setSupervisorAuthed(true);
         navigation.replace('Dashboard');
       } else {
-        setError('Invalid PIN. Try 1234.');
+        setError('Invalid PIN.');
         setIsLoading(false);
         setPassword('');
       }
@@ -61,6 +62,7 @@ export function SupervisorLoginScreen() {
                 secureTextEntry
               />
             </View>
+            <Text style={styles.hintText}>Hint: 1234</Text>
 
             {!!error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -79,7 +81,6 @@ export function SupervisorLoginScreen() {
 
           <Animated.View entering={FadeInUp.duration(600).delay(400)} style={styles.footer}>
             <Text style={styles.footerText}>AUTHORIZED PERSONNEL ONLY</Text>
-            <Text style={styles.hintText}>For testing, use password: 1234</Text>
           </Animated.View>
 
         </View>
@@ -119,7 +120,7 @@ const styles = StyleSheet.create({
   loginBtnDisabled: { opacity: 0.5, shadowOpacity: 0 },
   loginBtnText: { color: '#fff', fontSize: 16, fontWeight: '500' },
 
-  footer: { marginTop: 'auto', paddingTop: 24, alignItems: 'center' },
+  footer: { marginTop: 32, paddingTop: 24, alignItems: 'center' },
   footerText: { fontSize: 9, color: '#aaa', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
   hintText: { fontSize: 12, color: '#666', marginTop: 8, fontStyle: 'italic' },
 });

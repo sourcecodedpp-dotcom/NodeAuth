@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { getPendingLogs } from './lib/db';
-import NetInfo from '@react-native-community/netinfo';
 
 interface AppState {
   isOnline: boolean;
@@ -23,15 +22,16 @@ export const useAppStore = create<AppState>((set) => ({
   activeUserId: null,
   setOnlineStatus: (status) => set({ isOnline: status }),
   refreshPendingLogs: async () => {
-    const logs = await getPendingLogs();
-    set({ pendingSyncCount: logs.length });
+    try {
+      const logs = await getPendingLogs();
+      set({ pendingSyncCount: logs.length });
+    } catch (e) {
+      console.error('Failed to refresh logs:', e);
+    }
   },
   setIsSyncing: (status) => set({ isSyncing: status }),
   setSupervisorAuthed: (status) => set({ isSupervisorAuthed: status }),
   setActiveUser: (id) => set({ activeUserId: id }),
 }));
 
-// Setup network listener for React Native
-NetInfo.addEventListener(state => {
-  useAppStore.getState().setOnlineStatus(!!state.isConnected);
-});
+// End of store.

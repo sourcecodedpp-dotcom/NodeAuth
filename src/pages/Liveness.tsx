@@ -17,7 +17,7 @@ export function Liveness() {
   const facingMode = location.state?.facingMode || "user";
   
   const [challenge, setChallenge] = useState(() => generateRandomChallenge());
-  const [status, setStatus] = useState("idle"); // idle, checking, success, fail
+  const [status, setStatus] = useState<"idle" | "checking" | "success" | "fail" | "not_verified">("idle");
   const [matchedName, setMatchedName] = useState<string | null>(null);
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -120,7 +120,7 @@ export function Liveness() {
         const dbEntry = await getEmbedding(u.embeddingId);
         const storedVector = dbEntry ? dbEntry.vector : new Float32Array(128).fill(0.1); 
         const score = computeSimilarity(embedding!, storedVector);
-        if (score > 0.55 && score > highestScore) {
+        if (score > 0.70 && score > highestScore) {
           highestScore = score;
           matchedUserId = u.id;
           matchedUserName = u.name;
@@ -134,13 +134,16 @@ export function Liveness() {
         if ('vibrate' in navigator) navigator.vibrate([100, 50, 100]);
         await handleResult(matchedUserId, "success", highestScore);
       } else {
-        setStatus("fail");
+        setStatus("not_verified");
         // Vibrate to indicate failure
         if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
         await handleResult("UNKNOWN", "failed", highestScore);
+        setTimeout(() => navigate('/dashboard'), 4000);
       }
       
-      setTimeout(() => navigate('/dashboard'), 2000);
+      if (matchedUserId) {
+        setTimeout(() => navigate('/dashboard'), 2000);
+      }
     }
 
     const timer = setTimeout(runChallenge, 800);
@@ -230,13 +233,27 @@ export function Liveness() {
                   Access Granted
                 </div>
               </motion.div>
+            ) : status === "not_verified" ? (
+              <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="py-8 flex flex-col items-center">
+                <div className="w-20 h-20 bg-neutral-100 border border-black/10 rounded-[24px] mb-6 flex items-center justify-center">
+                  <ShieldAlert className="w-10 h-10 text-neutral-400" strokeWidth={1.5} />
+                </div>
+                <h2 className="text-xl font-semibold text-black mb-2 tracking-tight">Face Not Verified</h2>
+                <p className="text-neutral-500 font-light text-sm mb-4">No matching signature. Please register first.</p>
+                <button 
+                  onClick={() => navigate('/register')}
+                  className="bg-black text-white px-4 py-2 rounded-xl text-xs font-semibold"
+                >
+                  Go to Registration
+                </button>
+              </motion.div>
             ) : (
               <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="py-8 flex flex-col items-center">
                 <div className="w-20 h-20 bg-neutral-100 border border-black/10 rounded-[24px] mb-6 flex items-center justify-center">
                   <ShieldAlert className="w-10 h-10 text-neutral-400" strokeWidth={1.5} />
                 </div>
-                <h2 className="text-xl font-semibold text-black mb-2 tracking-tight">Challenge Failed</h2>
-                <p className="text-neutral-500 font-light text-sm">Attempt securely logged.</p>
+                <h2 className="text-xl font-semibold text-black mb-2 tracking-tight">Face Not Detected</h2>
+                <p className="text-neutral-500 font-light text-sm">Could not verify liveness challenge.</p>
               </motion.div>
             )}
           </motion.div>
